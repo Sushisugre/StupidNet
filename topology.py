@@ -43,8 +43,10 @@ def setup():
     h2.setMAC("0:0:0:0:2:0")
     h3.setMAC("0:0:0:0:3:0")
     h4.setMAC("0:0:0:0:4:0")
-    # h5.setMAC("0:0:0:0:5:0")
-    # h6.setMAC("0:0:0:0:6:0")
+
+    result1=h4.cmd('ifconfig')
+    print result1
+
     CLI(net)
     net.stop()
  
