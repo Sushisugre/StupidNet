@@ -98,7 +98,8 @@ class Mixnet(object):
                 self.resend_packet(packet_in, of.OFPP_FLOOD)
                 return
 
-        log.debug("Receive "+ str(packet.type) + " from " + str(src_mac))
+        ip_packet = packet.find('ipv4')
+        log.debug("Receive "+ str(packet.type) + " from " + ip_packet.srcip+":"+ str(src_mac))
 
 
 
