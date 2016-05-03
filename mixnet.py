@@ -5,6 +5,13 @@ from pox.lib.util import dpid_to_str
 import pox.lib.packet as pkt
 
 log = core.getLogger()
+s1_dpid=0
+s2_dpid=0
+s3_dpid=0
+s4_dpid=0
+s5_dpid=0
+# dpid:role
+dpid_arr = [{}]
 
 class Mixnet(object):
     """ Todo """
@@ -21,7 +28,18 @@ class Mixnet(object):
         self.servers = []
         self.clients = []
 
-
+    def resend_packet (self, packet_in, out_port):
+        """
+        Instructs the switch to resend a packet      
+        "packet_in" is the ofp_packet_in object the switch had 
+        sent to the controller due to a table-miss.
+        """
+        msg = of.ofp_packet_out()
+        msg.data = packet_in
+        action = of.ofp_action_output(port = out_port)
+        msg.actions.append(action)
+        self.connection.send(msg)
+        
     def _handle_PacketIn (self, event):
         """
         Handle packet in event
@@ -32,7 +50,12 @@ class Mixnet(object):
         dst_mac = packet.dst
         in_port = event.port
 
+        if packet.type != pkt.ethernet.IP_TYPE:
+            self.resend_packet(packet_in, of.OFPP_FLOOD)
+            return
+
         log.debug("Receive "+ str(packet.type) + " from " + str(src_mac))
+
 
 
 """
