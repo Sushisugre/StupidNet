@@ -106,7 +106,8 @@ class Mixnet(object):
                 + str(ip_packet.srcip)+":"+ str(src_mac)
                 + " to " + str(ip_packet.dstip)+":"+ str(dst_mac))
         else:
-            log.debug("Receive "+ str(packet.type) + " from " + str(src_mac))
+            log.debug("Receive "+ str(packet.type) + " from " + str(src_mac)
+                        + " to " + str(dst_mac))
 
 
 
