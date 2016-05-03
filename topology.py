@@ -24,11 +24,11 @@ class MixTopo(Topo):
         s1 = self.addSwitch( 's1' )
         s2 = self.addSwitch( 's2' )
         # Add links
-        self.addLink( h1, s1 )
-        self.addLink( h2, s1 )
-        self.addLink( h3, s1 )
-        self.addLink( s1, s2 )
-        self.addLink( s2, h4 ) 
+        self.addLink( h1, s1 , bw=1, delay='10ms', loss=0, max_queue_size=1000, use_htb=True)
+        self.addLink( h2, s1 , bw=1, delay='10ms', loss=0, max_queue_size=1000, use_htb=True)
+        self.addLink( h3, s1 , bw=1, delay='10ms', loss=0, max_queue_size=1000, use_htb=True)
+        self.addLink( s1, s2 , bw=1, delay='10ms', loss=0, max_queue_size=1000, use_htb=True)
+        self.addLink( s2, h4 , bw=1, delay='10ms', loss=0, max_queue_size=1000, use_htb=True) 
   
 
 def setup():
