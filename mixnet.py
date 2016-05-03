@@ -118,6 +118,5 @@ def launch (balancer_addr, server_addrs):
     def start_switch (event):
         log.info("Controlling %s" % (event.connection))
         # log.info("Switch %s has come up.", dpid_to_str(event.dpid))
-    
-    core.registerNew(Mixnet, event.connection, balancer, server_ips)
+        core.registerNew(Mixnet, event.connection, balancer, server_ips)
     core.openflow.addListenerByName("ConnectionUp", start_switch)
