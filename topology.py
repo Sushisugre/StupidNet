@@ -38,11 +38,15 @@ def setup():
     net.start()
     print "Dumping host connections"
     dumpNodeConnections(net.hosts)
+    s1,s2 = net.get('s1','s2')
     h1,h2,h3,h4=net.get('h1','h2','h3','h4')
     h1.setMAC("0:0:0:0:1:0")
     h2.setMAC("0:0:0:0:2:0")
     h3.setMAC("0:0:0:0:3:0")
     h4.setMAC("0:0:0:0:4:0")
+
+    result1=s2.cmd('ifconfig')
+    print result1
 
     result1=h4.cmd('ifconfig')
     print result1
