@@ -22,17 +22,17 @@ class Mixnet(object):
         self.clients = []
 
 
-        def _handle_PacketIn (self, event):
-            """
-            Handle packet in event
-            """
-            packet_in = event.ofp 
-            packet = event.parsed
-            src_mac = packet.src
-            dst_mac = packet.dst
-            in_port = event.port
+    def _handle_PacketIn (self, event):
+        """
+        Handle packet in event
+        """
+        packet_in = event.ofp 
+        packet = event.parsed
+        src_mac = packet.src
+        dst_mac = packet.dst
+        in_port = event.port
 
-            log.debug("Receive "+ str(packet.type) + " from " + str(src_mac))
+        log.debug("Receive "+ str(packet.type) + " from " + str(src_mac))
 
 
 """
