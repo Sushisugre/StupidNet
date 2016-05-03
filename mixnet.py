@@ -46,6 +46,8 @@ class Mixnet(object):
         """
         arp = packet.find("arp")
         if packet.payload.opcode == arp.REPLY: # Server or client reply
+            log.debug("ARP request for entry proxy??");
+
             host = {
                 'ip': arp.protosrc,
                 'mac': arp.hwsrc,
@@ -95,12 +97,14 @@ class Mixnet(object):
                 self.handle_arp(packet, in_port)
                 return
             if packet.type != pkt.ethernet.IP_TYPE:
-                self.resend_packet(packet_in, of.OFPP_FLOOD)
+                # self.resend_packet(packet_in, of.OFPP_FLOOD)
                 return
 
         ip_packet = packet.find('ipv4')
         if ip_packet:
-            log.debug("Receive "+ str(packet.type) + " from " + str(ip_packet.srcip)+":"+ str(src_mac))
+            log.debug("Receive "+ str(packet.type) + " from " 
+                + str(ip_packet.srcip)+":"+ str(src_mac)
+                + " to " + str(ip_packet.dstip)+":"+ str(dst_mac))
         else:
             log.debug("Receive "+ str(packet.type) + " from " + str(src_mac))
 
