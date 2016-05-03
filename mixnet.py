@@ -41,8 +41,6 @@ class Mixnet(object):
     servers: ip address of servers
 """
 def launch (balancer_addr, server_addrs):
-    balancer = Mixnet(balancer_addr)
-    # server_ips = [IPAddr(x) for x in server_addrs.split(",")]
 
     def start_switch (event):
         log.info("Controlling %s" % (event.connection))
