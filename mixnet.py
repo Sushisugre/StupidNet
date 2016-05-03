@@ -99,7 +99,10 @@ class Mixnet(object):
                 return
 
         ip_packet = packet.find('ipv4')
-        log.debug("Receive "+ str(packet.type) + " from " + ip_packet.srcip+":"+ str(src_mac))
+        if ip_packet:
+            log.debug("Receive "+ str(packet.type) + " from " + ip_packet.srcip+":"+ str(src_mac))
+        else:
+            log.debug("Receive "+ str(packet.type) + " from " + str(src_mac))
 
 
 
