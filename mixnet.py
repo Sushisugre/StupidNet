@@ -3,15 +3,11 @@ import pox.openflow.libopenflow_01 as of
 from pox.lib.addresses import IPAddr, EthAddr
 from pox.lib.util import dpid_to_str
 import pox.lib.packet as pkt
+import threading
+
 
 log = core.getLogger()
-s1_dpid=0
-s2_dpid=0
-s3_dpid=0
-s4_dpid=0
-s5_dpid=0
-# dpid:role
-dpid_arr = [{}]
+
 
 class Mixnet(object):
     """ Todo """
@@ -28,14 +24,9 @@ class Mixnet(object):
         self.servers = []
         self.clients = []
 
-    def resend_packet (self, packet_in, out_port):
-        """
-        Instructs the switch to resend a packet      
-        "packet_in" is the ofp_packet_in object the switch had 
-        sent to the controller due to a table-miss.
-        """
+    def send_packet (self, packet, out_port):
         msg = of.ofp_packet_out()
-        msg.data = packet_in
+        msg.data = packet
         action = of.ofp_action_output(port = out_port)
         msg.actions.append(action)
         self.connection.send(msg)
@@ -61,7 +52,7 @@ class Mixnet(object):
                 self.clients.append(host)
 
         elif packet.payload.opcode == arp.REQUEST: # Request for entry proxy
-            log.debug("ARP request for entry proxy");
+            log.debug("ARP request for "+str(arp.protodst)+" from " +str(arp.protosrc));
 
             packet = pkt.ethernet(
                     type = pkt.ethernet.ARP_TYPE,
@@ -80,6 +71,40 @@ class Mixnet(object):
                     action = of.ofp_action_output(port = in_port))
             self.connection.send(msg)
 
+    def new_connection(self, packet, in_port):
+        src_mac = packet.src
+        ip_packet = packet.find('ipv4')
+        tcpp = packet.find('tcp')
+        print "syn seq: " + str(tcpp.seq)
+        print "in port: " + str(in_port)
+
+
+        tcp_packet = pkt.tcp()
+        tcp_packet.srcport = 65530
+        tcp_packet.dstport = tcpp.srcport
+        tcp_packet.seq = 100
+        tcp_packet.ack = tcpp.seq + 1
+        tcp_packet.off = 5
+        tcp_packet.len = pkt.tcp.MIN_LEN + 20
+        tcp_packet._setflag(tcp_packet.SYN_flag,1)
+        tcp_packet._setflag(tcp_packet.ACK_flag,1)
+        # tcp_packet.payload = ""
+
+        ipv4_packet = pkt.ipv4()
+        ipv4_packet.iplen = pkt.ipv4.MIN_LEN + len(tcp_packet)
+        ipv4_packet.protocol = pkt.ipv4.TCP_PROTOCOL
+        ipv4_packet.dstip = ip_packet.srcip
+        ipv4_packet.srcip = self.ip
+        ipv4_packet.set_payload(tcp_packet)
+
+        eth_packet = pkt.ethernet()
+        eth_packet.set_payload(ipv4_packet)
+        eth_packet.dst = src_mac
+        eth_packet.src = self.mac
+        eth_packet.type = pkt.ethernet.IP_TYPE
+
+        self.send_packet(eth_packet, in_port)
+
     def _handle_PacketIn (self, event):
         """
         Handle packet in event
@@ -91,16 +116,27 @@ class Mixnet(object):
         in_port = event.port
 
         # switch 1: entry
-        if event.connection.dpid==s1_dpid:
-            # handle arp messages
-            if packet.type == pkt.ethernet.ARP_TYPE:
-                self.handle_arp(packet, in_port)
-                return
-            if packet.type != pkt.ethernet.IP_TYPE:
-                # self.resend_packet(packet_in, of.OFPP_FLOOD)
-                return
+        # if event.connection.dpid==s1_dpid:
+        
+        # handle arp messages
+        if packet.type == pkt.ethernet.ARP_TYPE:
+            self.handle_arp(packet, in_port)
+            return
+        if packet.type != pkt.ethernet.IP_TYPE:
+            # self.resend_packet(packet_in, of.OFPP_FLOOD)
+            return
 
         ip_packet = packet.find('ipv4')
+        tcpp = packet.find('tcp')
+        if tcpp and ip_packet.srcip != self.ip:
+            pass
+
+        if tcpp and tcpp.SYN:
+            print "Get a SYN!!!!"
+            self.new_connection(packet, in_port)
+          # setup new connection
+
+
         if ip_packet:
             log.debug("Receive "+ str(packet.type) + " from " 
                 + str(ip_packet.srcip)+":"+ str(src_mac)
@@ -122,6 +158,5 @@ def launch (balancer_addr, server_addrs):
 
     def start_switch (event):
         log.info("Controlling %s" % (event.connection))
-        # log.info("Switch %s has come up.", dpid_to_str(event.dpid))
         core.registerNew(Mixnet, event.connection, balancer, server_ips)
     core.openflow.addListenerByName("ConnectionUp", start_switch)
