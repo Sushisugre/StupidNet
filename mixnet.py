@@ -11,17 +11,14 @@ log = core.getLogger()
 
 class Mixnet(object):
     """ Todo """
-    def __init__ (self, connection, balancer_addr, server_ips):
+    def __init__ (self, connection, balancer_addr):
         # Keep track of the connection to the switch     
         self.connection = connection
         # This binds our PacketIn event listener
         connection.addListeners(self)
-        self.index = 0
         self.flow_map = {}
         self.mac = EthAddr("01:01:01:01:01:01")
         self.ip = IPAddr(balancer_addr)
-        self.server_ips = server_ips
-        self.servers = []
         self.clients = []
 
     def send_packet (self, packet, out_port):
@@ -75,19 +72,19 @@ class Mixnet(object):
         src_mac = packet.src
         ip_packet = packet.find('ipv4')
         tcpp = packet.find('tcp')
-        print "syn seq: " + str(tcpp.seq)
-        print "in port: " + str(in_port)
-
 
         tcp_packet = pkt.tcp()
-        tcp_packet.srcport = 65530
+        tcp_packet.srcport = 11111
         tcp_packet.dstport = tcpp.srcport
-        tcp_packet.seq = 100
+        tcp_packet.seq = 0
         tcp_packet.ack = tcpp.seq + 1
-        tcp_packet.off = 5
-        tcp_packet.len = pkt.tcp.MIN_LEN + 20
+        tcp_packet.off = 10
+        tcp_packet.win = 29000
+        tcp_packet.tcplen = tcpp.tcplen
+        # tcp_packet.tcplen = pkt.tcp.MIN_LEN
         tcp_packet._setflag(tcp_packet.SYN_flag,1)
         tcp_packet._setflag(tcp_packet.ACK_flag,1)
+        tcp_packet.options = tcpp.options
         # tcp_packet.payload = ""
 
         ipv4_packet = pkt.ipv4()
@@ -105,6 +102,38 @@ class Mixnet(object):
 
         self.send_packet(eth_packet, in_port)
 
+    def push_message(self, packet, port):
+        src_mac = packet.src
+        ip_packet = packet.find('ipv4')
+        tcpp = packet.find('tcp')
+
+        tcp_packet = pkt.tcp()
+        tcp_packet.srcport = 11111
+        tcp_packet.dstport = tcpp.srcport
+        tcp_packet.seq = tcpp.ack
+        tcp_packet.ack = tcpp.seq + tcpp.tcplen - tcpp.off * 4
+        tcp_packet.off = 5
+        tcp_packet.tcplen = tcpp.tcplen
+        tcp_packet.win = 29000
+        tcp_packet._setflag(tcp_packet.SYN_flag,0)
+        tcp_packet._setflag(tcp_packet.ACK_flag,1)
+        tcp_packet.payload = tcpp.payload
+
+        ipv4_packet = pkt.ipv4()
+        ipv4_packet.iplen = pkt.ipv4.MIN_LEN + len(tcp_packet)
+        ipv4_packet.protocol = pkt.ipv4.TCP_PROTOCOL
+        ipv4_packet.dstip = ip_packet.srcip
+        ipv4_packet.srcip = self.ip
+        ipv4_packet.set_payload(tcp_packet)
+
+        eth_packet = pkt.ethernet()
+        eth_packet.set_payload(ipv4_packet)
+        eth_packet.dst = src_mac
+        eth_packet.src = self.mac
+        eth_packet.type = pkt.ethernet.IP_TYPE
+
+        self.send_packet(eth_packet, port)
+
     def _handle_PacketIn (self, event):
         """
         Handle packet in event
@@ -115,8 +144,7 @@ class Mixnet(object):
         dst_mac = packet.dst
         in_port = event.port
 
-        # switch 1: entry
-        # if event.connection.dpid==s1_dpid:
+        print "-- something in --"
         
         # handle arp messages
         if packet.type == pkt.ethernet.ARP_TYPE:
@@ -128,14 +156,6 @@ class Mixnet(object):
 
         ip_packet = packet.find('ipv4')
         tcpp = packet.find('tcp')
-        if tcpp and ip_packet.srcip != self.ip:
-            pass
-
-        if tcpp and tcpp.SYN:
-            print "Get a SYN!!!!"
-            self.new_connection(packet, in_port)
-          # setup new connection
-
 
         if ip_packet:
             log.debug("Receive "+ str(packet.type) + " from " 
@@ -146,17 +166,25 @@ class Mixnet(object):
                         + " to " + str(dst_mac))
 
 
+        if tcpp and ip_packet.dstip == self.ip:
+            if tcpp and tcpp.SYN:
+                print "Get a SYN!!!!"
+                self.new_connection(packet, in_port)
+                return
 
-"""
-    Launch load balancer
-    balancer: ip address of load balancer
-    servers: ip address of servers
-"""
-def launch (balancer_addr, server_addrs):
+            if tcpp and tcpp.ACK:
+                print "Get a ACK!!!! ack:"+str(tcpp.ack)+" len:"+str(tcpp.tcplen)
+                self.push_message(packet, in_port)
+                return
+          # setup new connection
+
+
+
+
+def launch (balancer_addr):
     balancer = IPAddr(balancer_addr)
-    server_ips = [IPAddr(x) for x in server_addrs.split(",")]
 
     def start_switch (event):
         log.info("Controlling %s" % (event.connection))
-        core.registerNew(Mixnet, event.connection, balancer, server_ips)
+        core.registerNew(Mixnet, event.connection, balancer)
     core.openflow.addListenerByName("ConnectionUp", start_switch)

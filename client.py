@@ -18,7 +18,8 @@ def connect(room_ip, room_port):
     t.start()
     # foreground send
     
-    s.send('Someone joined the room'.encode())
+    s.send('Someone joined the room\n'.encode())
+
     while running:
         send(s)
     
@@ -48,7 +49,7 @@ def main(argv):
     if args.port:
         port = args.port
     else:
-        port = 65530
+        port = 11111
     connect(args.ip, port)
 
 
