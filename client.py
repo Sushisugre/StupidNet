@@ -7,11 +7,14 @@ import time
 running = True
 
 def connect(room_ip, room_port, name):
-    print "client connecting to " + room_ip+":"+str(room_port)
+    """
+    Connect to chatroom
+    """
+    print "Connecting to " + room_ip+":"+str(room_port)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # s.settimeout(2)
     s.connect((room_ip, room_port) )
-    print "client connect to server"
+    print "Connected, welcome!"
 
     # background receive
     t = threading.Thread(target=receive, args = (s,))
@@ -23,7 +26,11 @@ def connect(room_ip, room_port, name):
 
     time.sleep(1)
     while running:
-        send(s)
+        try:
+            send(name, s)
+        except KeyboardInterrupt:
+            s.close()
+            sys.exit(0)
     
 def receive(s):
     """
@@ -33,13 +40,12 @@ def receive(s):
         msg = s.recv(4096)
         if  msg :
             sys.stdout.write("> " + msg)
-            # sys.stdout.write('[Me] '); sys.stdout.flush() 
         else :
             print '\nDisconnected...\n'
             running = False
             sys.exit()
 
-def send(s):
+def send(name, s):
     """
     wait for stdin to send
     """
@@ -50,7 +56,7 @@ def send(s):
     ERASE_LINE = '\x1b[2K'
     print(CURSOR_UP_ONE + ERASE_LINE + CURSOR_UP_ONE)
     
-    msg = msg + "\n"
+    msg = "["+ name +"]: " + msg + "\n"
     s.send(msg.encode())
     # print "send"
 

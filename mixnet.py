@@ -8,20 +8,23 @@ import threading
 
 log = core.getLogger()
 
+class Chatroom(object):
+    """ Controller as a chatroom """
 
-class Mixnet(object):
-
-    def __init__ (self, connection, balancer_addr):
+    def __init__ (self, connection, room_ip):
         # Keep track of the connection to the switch     
         self.connection = connection
         # This binds our PacketIn event listener
         connection.addListeners(self)
         self.flow_map = {}
         self.mac = EthAddr("01:01:01:01:01:01")
-        self.ip = IPAddr(balancer_addr)
+        self.ip = IPAddr(room_ip)
         self.clients = {}
 
     def send_packet (self, packet, out_port):
+        """
+        Send a open flow packet out
+        """
         msg = of.ofp_packet_out()
         msg.data = packet
         action = of.ofp_action_output(port = out_port)
@@ -69,6 +72,9 @@ class Mixnet(object):
             self.connection.send(msg)
 
     def new_connection(self, packet, in_port):
+        """
+        Send SYN/ACK to client, maintain connection info for new client
+        """
         src_mac = packet.src
         ip_packet = packet.find('ipv4')
         tcpp = packet.find('tcp')
@@ -81,7 +87,6 @@ class Mixnet(object):
         tcp_packet.off = 10
         tcp_packet.win = 29000
         tcp_packet.tcplen = tcpp.tcplen
-        # tcp_packet.tcplen = pkt.tcp.MIN_LEN
         tcp_packet._setflag(tcp_packet.SYN_flag,1)
         tcp_packet._setflag(tcp_packet.ACK_flag,1)
         tcp_packet.options = tcpp.options
@@ -103,24 +108,22 @@ class Mixnet(object):
                     'switch_port':in_port, 'mac':src_mac, 'seq':1, 'ack':1}
         key = str(ip_packet.srcip)+":"+str(tcpp.srcport)
         self.clients[key] = client
-
         self.send_packet(eth_packet, in_port)
 
     def push_message(self, packet, port):
-        src_mac = packet.src
-        ip_packet = packet.find('ipv4')
-        tcpp = packet.find('tcp')
-        key = str(ip_packet.srcip)+":"+str(tcpp.srcport)
-
+        """
+        Push message from one client to all connected clients
+        """
         for key, client in self.clients.iteritems():
-            print "client" + str(client)
             eth_packet = self.pack_message(packet, client)
             self.send_packet(eth_packet, client['switch_port'])
 
         print "pushed message to clients"
 
-
-    def send_ack(self, packet, port):
+    def send_control_packet(self, packet, port, SYN, ACK, FIN):
+        """
+        Send control packet SYN, ACK, FIN according to specified flag
+        """
         src_mac = packet.src
         ip_packet = packet.find('ipv4')
         tcpp = packet.find('tcp')
@@ -129,17 +132,22 @@ class Mixnet(object):
         client = self.clients[key]
         conn_seq = client['seq']
 
+        if tcpp.FIN:
+            client['ack'] = client['ack'] + 1
+        else:
+            client['ack'] = tcpp.seq + tcpp.tcplen - tcpp.off * 4
+
         tcp_packet = pkt.tcp()
         tcp_packet.srcport = 11111
         tcp_packet.dstport = tcpp.srcport
         tcp_packet.seq = conn_seq
-        tcp_packet.ack = tcpp.seq + tcpp.tcplen - tcpp.off * 4
+        tcp_packet.ack = client['ack']
         tcp_packet.off = 5
         tcp_packet.tcplen = pkt.tcp.MIN_LEN
         tcp_packet.win = 29000
-        tcp_packet._setflag(tcp_packet.SYN_flag,0)
-        tcp_packet._setflag(tcp_packet.ACK_flag,1)
-        client['ack'] = tcp_packet.ack
+        tcp_packet._setflag(tcp_packet.SYN_flag, SYN)
+        tcp_packet._setflag(tcp_packet.ACK_flag, ACK)
+        tcp_packet._setflag(tcp_packet.FIN_flag, FIN)
 
         ipv4_packet = pkt.ipv4()
         ipv4_packet.iplen = pkt.ipv4.MIN_LEN + len(tcp_packet)
@@ -156,7 +164,11 @@ class Mixnet(object):
 
         self.send_packet(eth_packet, port)
 
+
     def pack_message(self, packet, client):
+        """
+        Repack a message packet according to different clients connection info
+        """
         ip_packet = packet.find('ipv4')
         tcpp = packet.find('tcp')
 
@@ -195,13 +207,34 @@ class Mixnet(object):
         return eth_packet
 
     def update_seq(self, packet):
+        """
+        After receiving ACK from the client
+        Update the next packet sequence number for it
+        """
+        ip_packet = packet.find('ipv4')
+        tcpp = packet.find('tcp')
+        client = self.get_client(packet)
+        if client:
+            client['seq'] = tcpp.ack
+
+    def remove_client():
+        """
+        Remove a client after connection close
+        """
+        ip_packet = packet.find('ipv4')
+        tcpp = packet.find('tcp')
+        key = str(ip_packet.srcip)+":"+str(tcpp.srcport)
+        del self.clients[key]
+
+    def get_client(self, packet):
+        """
+        Get connected client by its socket identifier (ip:port)
+        """
         ip_packet = packet.find('ipv4')
         tcpp = packet.find('tcp')
         key = str(ip_packet.srcip)+":"+str(tcpp.srcport)
         client = self.clients[key]
-        if client:
-            client['seq'] = tcpp.ack
-
+        return client
 
     def _handle_PacketIn (self, event):
         """
@@ -238,18 +271,18 @@ class Mixnet(object):
                 print "Get a SYN!!!!"
                 self.new_connection(packet, in_port)
                 return
-            if tcp and tcpp.FIN:
+            if tcpp and tcpp.FIN:
                 print "Get a FIN!!!!"
-                self.send_ack(packet, in_port)
                 # close connection
+                self.send_control_packet(packet, in_port, False, True, False)
+                self.send_control_packet(packet, in_port, False, True, True)
 
             if tcpp and tcpp.ACK:
                 data_len = tcpp.tcplen - tcpp.off * 4
-                print "data len " + str(data_len)
                 if data_len != 0:
                     # a data packet
-                    # self.update_seq(packet)
-                    self.send_ack(packet, in_port)
+                    # send ACK
+                    self.send_control_packet(packet, in_port, False, True, False)
                     self.push_message(packet, in_port)
                 else:
                     # an ack
@@ -258,10 +291,10 @@ class Mixnet(object):
 
 
 
-def launch (balancer_addr):
-    balancer = IPAddr(balancer_addr)
+def launch (room_ip):
+    balancer = IPAddr(room_ip)
 
     def start_switch (event):
         log.info("Controlling %s" % (event.connection))
-        core.registerNew(Mixnet, event.connection, balancer)
+        core.registerNew(Chatroom, event.connection, balancer)
     core.openflow.addListenerByName("ConnectionUp", start_switch)
