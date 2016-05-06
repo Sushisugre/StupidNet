@@ -10,7 +10,7 @@ log = core.getLogger()
 
 
 class Mixnet(object):
-    """ Todo """
+
     def __init__ (self, connection, balancer_addr):
         # Keep track of the connection to the switch     
         self.connection = connection
@@ -100,7 +100,8 @@ class Mixnet(object):
         eth_packet.src = self.mac
         eth_packet.type = pkt.ethernet.IP_TYPE
 
-        client = {'ip':ip_packet.srcip, 'port':tcpp.srcport, 'mac':src_mac, 'seq':0}
+        client = {'ip':ip_packet.srcip, 'host_port':tcpp.srcport, 
+                    'switch_port':in_port, 'mac':src_mac, 'seq':1, 'ack':1}
         key = str(ip_packet.srcip)+":"+str(tcpp.srcport)
         self.clients[key] = client
 
@@ -110,19 +111,36 @@ class Mixnet(object):
         src_mac = packet.src
         ip_packet = packet.find('ipv4')
         tcpp = packet.find('tcp')
+        key = str(ip_packet.srcip)+":"+str(tcpp.srcport)
 
+        for key, client in self.clients.iteritems():
+            print "client" + str(client)
+            eth_packet = self.pack_message(packet, client)
+            self.send_packet(eth_packet, client['switch_port'])
+
+        print "pushed message to clients"
+
+
+    def send_ack(self, packet, port):
+        src_mac = packet.src
+        ip_packet = packet.find('ipv4')
+        tcpp = packet.find('tcp')
+
+        key = str(ip_packet.srcip)+":"+str(tcpp.srcport)
+        client = self.clients[key]
+        conn_seq = client['seq']
 
         tcp_packet = pkt.tcp()
         tcp_packet.srcport = 11111
         tcp_packet.dstport = tcpp.srcport
-        tcp_packet.seq = tcpp.ack
+        tcp_packet.seq = conn_seq
         tcp_packet.ack = tcpp.seq + tcpp.tcplen - tcpp.off * 4
         tcp_packet.off = 5
-        tcp_packet.tcplen = tcpp.tcplen
+        tcp_packet.tcplen = pkt.tcp.MIN_LEN
         tcp_packet.win = 29000
         tcp_packet._setflag(tcp_packet.SYN_flag,0)
         tcp_packet._setflag(tcp_packet.ACK_flag,1)
-        tcp_packet.payload = tcpp.payload
+        client['ack'] = tcp_packet.ack
 
         ipv4_packet = pkt.ipv4()
         ipv4_packet.iplen = pkt.ipv4.MIN_LEN + len(tcp_packet)
@@ -140,36 +158,42 @@ class Mixnet(object):
         self.send_packet(eth_packet, port)
 
     def pack_message(self, packet, client):
-        ip = client['ip']
-        mac = client['mac']
-        client_port = client['port']
+        ip_packet = packet.find('ipv4')
+        tcpp = packet.find('tcp')
+
+        client_ip = client['ip']
+        client_mac = client['mac']
+        client_port = client['host_port']
+        conn_seq = client['seq']
+        conn_ack = client['ack']
 
         tcp_packet = pkt.tcp()
         tcp_packet.srcport = 11111
-        tcp_packet.dstport = tcpp.srcport
-        tcp_packet.seq = tcpp.ack
-        tcp_packet.ack = tcpp.seq + tcpp.tcplen - tcpp.off * 4
+        tcp_packet.dstport = client_port
+        tcp_packet.seq = conn_seq
+        tcp_packet.ack = conn_ack
         tcp_packet.off = 5
         tcp_packet.tcplen = tcpp.tcplen
         tcp_packet.win = 29000
         tcp_packet._setflag(tcp_packet.SYN_flag,0)
         tcp_packet._setflag(tcp_packet.ACK_flag,1)
+        tcp_packet._setflag(tcp_packet.PSH_flag,1)
         tcp_packet.payload = tcpp.payload
 
         ipv4_packet = pkt.ipv4()
         ipv4_packet.iplen = pkt.ipv4.MIN_LEN + len(tcp_packet)
         ipv4_packet.protocol = pkt.ipv4.TCP_PROTOCOL
-        ipv4_packet.dstip = ip_packet.srcip
+        ipv4_packet.dstip = client_ip
         ipv4_packet.srcip = self.ip
         ipv4_packet.set_payload(tcp_packet)
 
         eth_packet = pkt.ethernet()
         eth_packet.set_payload(ipv4_packet)
-        eth_packet.dst = src_mac
+        eth_packet.dst = client_mac
         eth_packet.src = self.mac
         eth_packet.type = pkt.ethernet.IP_TYPE
 
-        pass
+        return eth_packet
 
     def update_seq(self, packet):
         ip_packet = packet.find('ipv4')
@@ -177,21 +201,20 @@ class Mixnet(object):
         key = str(ip_packet.srcip)+":"+str(tcpp.srcport)
         client = self.clients[key]
         if client:
+            print "before update " + str(client)
             client['seq'] = tcpp.ack
-            print "update seq num "+key+" to "+ str(client['seq'])
+            print "after update"+ str(client)
 
 
     def _handle_PacketIn (self, event):
         """
-        Handle packet in event
+        Handle packet_in event
         """
         packet_in = event.ofp 
         packet = event.parsed
         src_mac = packet.src
         dst_mac = packet.dst
         in_port = event.port
-
-        print "-- something in --"
         
         # handle arp messages
         if packet.type == pkt.ethernet.ARP_TYPE:
@@ -224,8 +247,9 @@ class Mixnet(object):
                 print "data len " + str(data_len)
                 if data_len != 0:
                     # a data packet
+                    # self.update_seq(packet)
+                    self.send_ack(packet, in_port)
                     self.push_message(packet, in_port)
-                    print "pushed message to clients"
                 else:
                     # an ack
                     self.update_seq(packet)
