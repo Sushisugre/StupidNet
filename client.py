@@ -2,10 +2,11 @@ import socket
 import argparse
 import sys
 import threading
+import time
 
 running = True
 
-def connect(room_ip, room_port):
+def connect(room_ip, room_port, name):
     print "client connecting to " + room_ip+":"+str(room_port)
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # s.settimeout(2)
@@ -16,10 +17,11 @@ def connect(room_ip, room_port):
     t = threading.Thread(target=receive, args = (s,))
     t.daemon = True
     t.start()
-    # foreground send
-    
-    s.send('Someone joined the room\n'.encode())
 
+    # foreground send
+    s.send('> ['+ name+'] joined the room\n'.encode())
+
+    time.sleep(1)
     while running:
         send(s)
     
@@ -42,6 +44,7 @@ def send(s):
     wait for stdin to send
     """
     msg = raw_input("\nEnter your message: ")
+    msg = msg + "\n"
     s.send(msg.encode())
     # print "send"
 
@@ -50,7 +53,11 @@ def main(argv):
         port = args.port
     else:
         port = 11111
-    connect(args.ip, port)
+    if args.name:
+        name = args.name
+    else:
+        name = 'anonymous turtle'
+    connect(args.ip, port, name)
 
 
 
@@ -58,5 +65,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Stupid client for ')
     parser.add_argument('-i', '--ip', default='10.0.0.254', help='ip address of chatroom', required=True)
     parser.add_argument('-p', '--port', help='port of chatroom')
+    parser.add_argument('-n', '--name', help='username')
     args = parser.parse_args()
     main(sys.argv[1:])
