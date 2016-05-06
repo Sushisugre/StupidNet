@@ -32,7 +32,7 @@ def receive(s):
     while True:
         msg = s.recv(4096)
         if  msg :
-            sys.stdout.write(msg)
+            sys.stdout.write("> " + msg)
             # sys.stdout.write('[Me] '); sys.stdout.flush() 
         else :
             print '\nDisconnected...\n'
@@ -43,7 +43,13 @@ def send(s):
     """
     wait for stdin to send
     """
-    msg = raw_input("\nEnter your message: ")
+    # msg = raw_input("\nEnter your message: ")
+    msg = raw_input()
+    # remove last line of terminal ouput
+    CURSOR_UP_ONE = '\x1b[1A'
+    ERASE_LINE = '\x1b[2K'
+    print(CURSOR_UP_ONE + ERASE_LINE + CURSOR_UP_ONE)
+    
     msg = msg + "\n"
     s.send(msg.encode())
     # print "send"

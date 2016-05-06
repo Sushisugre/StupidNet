@@ -85,7 +85,6 @@ class Mixnet(object):
         tcp_packet._setflag(tcp_packet.SYN_flag,1)
         tcp_packet._setflag(tcp_packet.ACK_flag,1)
         tcp_packet.options = tcpp.options
-        # tcp_packet.payload = ""
 
         ipv4_packet = pkt.ipv4()
         ipv4_packet.iplen = pkt.ipv4.MIN_LEN + len(tcp_packet)
@@ -201,9 +200,7 @@ class Mixnet(object):
         key = str(ip_packet.srcip)+":"+str(tcpp.srcport)
         client = self.clients[key]
         if client:
-            print "before update " + str(client)
             client['seq'] = tcpp.ack
-            print "after update"+ str(client)
 
 
     def _handle_PacketIn (self, event):
@@ -241,6 +238,10 @@ class Mixnet(object):
                 print "Get a SYN!!!!"
                 self.new_connection(packet, in_port)
                 return
+            if tcp and tcpp.FIN:
+                print "Get a FIN!!!!"
+                self.send_ack(packet, in_port)
+                # close connection
 
             if tcpp and tcpp.ACK:
                 data_len = tcpp.tcplen - tcpp.off * 4
@@ -254,7 +255,6 @@ class Mixnet(object):
                     # an ack
                     self.update_seq(packet)
                 return
-
 
 
 
